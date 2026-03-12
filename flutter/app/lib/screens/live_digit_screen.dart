@@ -12,9 +12,10 @@ class LiveDigitScreen extends StatefulWidget {
 class _LiveDigitScreenState extends State<LiveDigitScreen> {
   CameraController? _controller;
   bool _isInitialized = false;
-  bool _isStreaming = false;
-  int _frameCount = 0;
+
+  bool _isProcessing = false;
   String _prediction = '-';
+  DateTime _lastProcessed = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -43,18 +44,33 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
     if (_controller == null) return;
     if (_controller!.value.isStreamingImages) return;
 
-    await _controller!.startImageStream((CameraImage image) {
-      _frameCount++;
+    await _controller!.startImageStream((CameraImage image) async {
+      final now = DateTime.now();
 
-      if (_frameCount % 10 == 0) {
+      if (_isProcessing) return;
+      if (now.difference(_lastProcessed).inMilliseconds < 500) return;
+
+      _isProcessing = true;
+      _lastProcessed = now;
+
+      try {
+        final result = await _fakePredict(image);
+
         if (!mounted) return;
         setState(() {
-          _isStreaming = true;
-          _prediction =
-              'Streaming... ${image.width} x ${image.height} / frames: $_frameCount';
+          _prediction = result;
         });
+      } catch (e) {
+        debugPrint('Prediction error: $e');
+      } finally {
+        _isProcessing = false;
       }
     });
+  }
+
+  Future<String> _fakePredict(CameraImage image) async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    return 'Predicted Digit: 5';
   }
 
   @override
@@ -89,12 +105,10 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
               width: double.infinity,
               alignment: Alignment.center,
               child: Text(
-                _isStreaming
-                    ? _prediction
-                    : 'Prediction Result: waiting for stream...',
+                _isProcessing ? 'Processing...' : _prediction,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 28,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                 ),
               ),
