@@ -12,6 +12,9 @@ class LiveDigitScreen extends StatefulWidget {
 class _LiveDigitScreenState extends State<LiveDigitScreen> {
   CameraController? _controller;
   bool _isInitialized = false;
+  bool _isStreaming = false;
+  int _frameCount = 0;
+  String _prediction = '-';
 
   @override
   void initState() {
@@ -20,18 +23,37 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
   }
 
   Future<void> _initCamera() async {
-    _controller = CameraController(   // 카메라를 실제로 조작하는 컨트롤러
+    _controller = CameraController(
       cameras.first,
       ResolutionPreset.medium,
       enableAudio: false,
     );
 
-    // 초기화
     await _controller!.initialize();
 
     if (!mounted) return;
     setState(() {
       _isInitialized = true;
+    });
+
+    await _startImageStream();
+  }
+
+  Future<void> _startImageStream() async {
+    if (_controller == null) return;
+    if (_controller!.value.isStreamingImages) return;
+
+    await _controller!.startImageStream((CameraImage image) {
+      _frameCount++;
+
+      if (_frameCount % 10 == 0) {
+        if (!mounted) return;
+        setState(() {
+          _isStreaming = true;
+          _prediction =
+              'Streaming... ${image.width} x ${image.height} / frames: $_frameCount';
+        });
+      }
     });
   }
 
@@ -59,7 +81,6 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
           Expanded(
             child: SizedBox(
               width: double.infinity,
-              //카메라 화면을 UI에 보여주는 위젯
               child: CameraPreview(_controller!),
             ),
           ),
@@ -67,10 +88,13 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
             child: Container(
               width: double.infinity,
               alignment: Alignment.center,
-              child: const Text(
-                'Prediction Result: -',
-                style: TextStyle(
-                  fontSize: 32,
+              child: Text(
+                _isStreaming
+                    ? _prediction
+                    : 'Prediction Result: waiting for stream...',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
               ),
