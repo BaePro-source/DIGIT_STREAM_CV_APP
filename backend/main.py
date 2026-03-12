@@ -19,8 +19,9 @@ def root():
 async def predict(file: UploadFile = File(...)):
     contents = await file.read()
 
+    print("received filename:", file.filename)
+    print("received byte length:", len(contents))
+
     return {
-        "filename": file.filename,
-        "size": len(contents),
         "prediction": 5
     }

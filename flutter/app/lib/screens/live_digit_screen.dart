@@ -55,11 +55,13 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
       _lastProcessed = now;
 
       try {
-        final result = await ApiService.testPredict();
+        final bytes = image.planes[0].bytes;
+
+        final result = await ApiService.sendImage(bytes);
 
         if (!mounted) return;
         setState(() {
-          _prediction = result;
+          _prediction = result.toString();
         });
       } catch (e) {
         debugPrint('Prediction error: $e');
