@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import '../services/api_services.dart';
 import '../main.dart';
 
 class LiveDigitScreen extends StatefulWidget {
@@ -48,13 +49,13 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
       final now = DateTime.now();
 
       if (_isProcessing) return;
-      if (now.difference(_lastProcessed).inMilliseconds < 500) return;
+      if (now.difference(_lastProcessed).inMilliseconds < 1000) return;
 
       _isProcessing = true;
       _lastProcessed = now;
 
       try {
-        final result = await _fakePredict(image);
+        final result = await ApiService.testPredict();
 
         if (!mounted) return;
         setState(() {
@@ -62,15 +63,15 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
         });
       } catch (e) {
         debugPrint('Prediction error: $e');
+
+        if (!mounted) return;
+        setState(() {
+          _prediction = 'Error: $e';
+        });
       } finally {
         _isProcessing = false;
       }
     });
-  }
-
-  Future<String> _fakePredict(CameraImage image) async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    return 'Predicted Digit: 5';
   }
 
   @override
