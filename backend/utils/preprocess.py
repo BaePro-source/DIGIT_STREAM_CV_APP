@@ -102,7 +102,7 @@ def preprocess_image(image_bytes, save_debug=True, debug_dir="debug_images"):
     # 8. 숫자 영역 crop
     digit = cleaned[y:y+h, x:x+w]
     #숫자 획을 두껍게 만들기
-    digit = cv2.dilate(digit, np.ones((3, 3), np.uint8), iterations=2)
+    digit = cv2.dilate(digit, np.ones((2, 2), np.uint8), iterations=1)
     
 
     if save_debug:
