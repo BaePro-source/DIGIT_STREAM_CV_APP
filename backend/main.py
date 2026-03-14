@@ -1,13 +1,10 @@
-import io
-
-from PIL import Image
-
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+
+from utils.preprocess import preprocess_image
 
 
 class MNISTCNN(nn.Module):
@@ -53,13 +50,6 @@ model = MNISTCNN().to(device)
 model.load_state_dict(torch.load("models/mnist_cnn.pth", map_location=device))
 model.eval()
 
-transform = transforms.Compose([
-    transforms.Grayscale(num_output_channels=1),
-    transforms.Resize((28, 28)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.1307,), (0.3081,))
-])
-
 
 @app.get("/")
 def root():
@@ -68,16 +58,17 @@ def root():
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    contents = await file.read()
+    try:
+        contents = await file.read()
 
-    image = Image.open(io.BytesIO(contents)).convert("RGB")
+        input_tensor = preprocess_image(contents).to(device)
 
-    input_tensor = transform(image).unsqueeze(0).to(device)
+        with torch.no_grad():
+            output = model(input_tensor)
+            prediction = torch.argmax(output, dim=1).item()
 
-    with torch.no_grad():
-        output = model(input_tensor)
-        prediction = torch.argmax(output, dim=1).item()
+        return {"prediction": prediction}
 
-    return {
-        "prediction": prediction
-    }
+    except Exception as e:
+        print("predict error:", repr(e))
+        return {"prediction": -1, "error": str(e)}
