@@ -31,6 +31,7 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
       cameras.first,
       ResolutionPreset.medium,
       enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.bgra8888,
     );
 
     await _controller!.initialize();
@@ -55,7 +56,7 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
 
       _isProcessing = true;
       _lastProcessed = now;
-
+ 
       try {
         final pngBytes = _convertCameraImageToPng(image);
         final result = await ApiService.sendImage(pngBytes);
@@ -78,20 +79,30 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
   }
 
   Uint8List _convertCameraImageToPng(CameraImage image) {
-    final width = image.width;
-    final height = image.height;
+    final int width = image.width;
+    final int height = image.height;
 
-    final img.Image converted = img.Image(width: width, height: height);
+    final plane = image.planes[0];
+    final bytes = plane.bytes;
+    final bytesPerRow = plane.bytesPerRow;
+    final bytesPerPixel = plane.bytesPerPixel ?? 4;
 
-    final bytes = image.planes[0].bytes;
-    final bytesPerRow = image.planes[0].bytesPerRow;
+    final converted = img.Image(width: width, height: height);
 
     for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final int byteIndex = y * bytesPerRow + x;
-        final int pixel = bytes[byteIndex];
+      final rowOffset = y * bytesPerRow;
 
-        converted.setPixelRgb(x, y, pixel, pixel, pixel);
+      for (int x = 0; x < width; x++) {
+        final pixelOffset = rowOffset + x * bytesPerPixel;
+
+        if (pixelOffset + 3 >= bytes.length) continue;
+
+        final b = bytes[pixelOffset];
+        final g = bytes[pixelOffset + 1];
+        final r = bytes[pixelOffset + 2];
+        final a = bytes[pixelOffset + 3];
+
+        converted.setPixelRgba(x, y, r, g, b, a);
       }
     }
 
