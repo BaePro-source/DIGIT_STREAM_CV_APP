@@ -15,7 +15,7 @@ class ApiService {
       http.MultipartFile.fromBytes(
         'file',
         imageBytes,
-        filename: 'frame.jpg',
+        filename: 'frame.png',
       ),
     );
 

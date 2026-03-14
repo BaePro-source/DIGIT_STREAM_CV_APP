@@ -2,6 +2,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../services/api_services.dart';
 import '../main.dart';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
 
 class LiveDigitScreen extends StatefulWidget {
   const LiveDigitScreen({super.key});
@@ -55,9 +57,8 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
       _lastProcessed = now;
 
       try {
-        final bytes = image.planes[0].bytes;
-
-        final result = await ApiService.sendImage(bytes);
+        final pngBytes = _convertCameraImageToPng(image);
+        final result = await ApiService.sendImage(pngBytes);
 
         if (!mounted) return;
         setState(() {
@@ -74,6 +75,27 @@ class _LiveDigitScreenState extends State<LiveDigitScreen> {
         _isProcessing = false;
       }
     });
+  }
+
+  Uint8List _convertCameraImageToPng(CameraImage image) {
+    final width = image.width;
+    final height = image.height;
+
+    final img.Image converted = img.Image(width: width, height: height);
+
+    final bytes = image.planes[0].bytes;
+    final bytesPerRow = image.planes[0].bytesPerRow;
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int byteIndex = y * bytesPerRow + x;
+        final int pixel = bytes[byteIndex];
+
+        converted.setPixelRgb(x, y, pixel, pixel, pixel);
+      }
+    }
+
+    return Uint8List.fromList(img.encodePng(converted));
   }
 
   @override

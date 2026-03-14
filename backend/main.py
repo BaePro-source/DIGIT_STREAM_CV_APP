@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
+import io
 
 app = FastAPI()
 
@@ -19,8 +21,11 @@ def root():
 async def predict(file: UploadFile = File(...)):
     contents = await file.read()
 
+    image = Image.open(io.BytesIO(contents))
+
     print("received filename:", file.filename)
-    print("received byte length:", len(contents))
+    print("image size:", image.size)
+    print("image mode:", image.mode)
 
     return {
         "prediction": 5
