@@ -216,9 +216,9 @@ class PosePainter extends CustomPainter {
       double x = landmark.x * size.width / imageSize.width;
       double y = landmark.y * size.height / imageSize.height;
 
-      if (isFrontCamera) {
+      /*if (isFrontCamera) {
         x = size.width - x;
-      }
+      }*/
 
       return Offset(x, y);
     }
