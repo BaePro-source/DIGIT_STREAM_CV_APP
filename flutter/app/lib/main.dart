@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'screens/live_digit_screen.dart';
+import 'screens/home_screen.dart';
 
 late List<CameraDescription> cameras;
 
@@ -17,11 +18,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'MNIST Stream CV App',
+      title: ' Digit Stream CV App',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const LiveDigitScreen(),
+      home: const HomeScreen(),
     );
   }
 }
