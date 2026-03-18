@@ -15,7 +15,6 @@ class LiveDigitScreen extends StatefulWidget {
 class _LiveDigitScreenState extends State<LiveDigitScreen> {
   CameraController? _controller;
   bool _isInitialized = false;
-
   bool _isProcessing = false;
   String _prediction = '-';
   DateTime _lastProcessed = DateTime.fromMillisecondsSinceEpoch(0);
