@@ -54,8 +54,7 @@ def preprocess_image(image_bytes, save_debug=True, debug_dir="debug_images"):
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(cleaned, connectivity=8)
 
     h_img, w_img = cleaned.shape
-    best_idx = -1
-    best_area = 0
+    valid_boxes = []
 
     for i in range(1, num_labels):  # 0은 background
         x = stats[i, cv2.CC_STAT_LEFT]
@@ -68,26 +67,36 @@ def preprocess_image(image_bytes, save_debug=True, debug_dir="debug_images"):
         if area < 30:
             continue
 
-        # 전체 이미지의 20%보다 큰 영역이면 제외
-        if area > h_img * w_img * 0.2:
+        # 전체 이미지의 50%보다 큰 영역이면 제외
+        if area > h_img * w_img * 0.5:
             continue
 
-        # 가장자리 붙은 건 제외 (배경/종이/그림자 잡는 경우 많음)
+        # 가장자리 붙은 건 제외
         if x <= 1 or y <= 1 or (x + w) >= w_img - 1 or (y + h) >= h_img - 1:
             continue
-        
-        #남은 후보 중에서 가장 큰 면적 선택(숫자일 가능성이 가장 큰 컴포넌트를 고르기)
-        if area > best_area:
-            best_area = area
-            best_idx = i
 
-    if best_idx == -1:
+        valid_boxes.append((x, y, w, h, area))
+
+    if len(valid_boxes) == 0:
         raise ValueError("유효한 숫자 영역을 찾을 수 없습니다.")
 
-    x = stats[best_idx, cv2.CC_STAT_LEFT]
-    y = stats[best_idx, cv2.CC_STAT_TOP]
-    w = stats[best_idx, cv2.CC_STAT_WIDTH]
-    h = stats[best_idx, cv2.CC_STAT_HEIGHT]
+    # 여러 component를 하나의 큰 bounding box로 합치기
+    x_min = min(box[0] for box in valid_boxes)
+    y_min = min(box[1] for box in valid_boxes)
+    x_max = max(box[0] + box[2] for box in valid_boxes)
+    y_max = max(box[1] + box[3] for box in valid_boxes)
+
+    x = x_min
+    y = y_min
+    w = x_max - x_min
+    h = y_max - y_min
+
+    # 약간 margin 추가
+    margin = 8
+    x = max(0, x - margin)
+    y = max(0, y - margin)
+    w = min(w_img - x, w + 2 * margin)
+    h = min(h_img - y, h + 2 * margin)
 
     # 너무 작은 영역이면 오류 처리
     if w < 10 or h < 10:
