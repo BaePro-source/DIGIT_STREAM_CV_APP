@@ -4,6 +4,10 @@ PODS:
   - Flutter (1.0.0)
   - flutter_foreground_task (0.0.1):
     - Flutter
+  - flutter_pose_detection (0.1.0):
+    - Flutter
+    - TensorFlowLiteSwift/CoreML (~> 2.14.0)
+    - TensorFlowLiteSwift/Metal (~> 2.14.0)
   - flutter_screen_recording (0.0.1):
     - Flutter
   - gal (1.0.0):
@@ -80,11 +84,27 @@ PODS:
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - TensorFlowLiteC (2.14.0):
+    - TensorFlowLiteC/Core (= 2.14.0)
+  - TensorFlowLiteC/Core (2.14.0)
+  - TensorFlowLiteC/CoreML (2.14.0):
+    - TensorFlowLiteC/Core
+  - TensorFlowLiteC/Metal (2.14.0):
+    - TensorFlowLiteC/Core
+  - TensorFlowLiteSwift/Core (2.14.0):
+    - TensorFlowLiteC (= 2.14.0)
+  - TensorFlowLiteSwift/CoreML (2.14.0):
+    - TensorFlowLiteC/CoreML (= 2.14.0)
+    - TensorFlowLiteSwift/Core (= 2.14.0)
+  - TensorFlowLiteSwift/Metal (2.14.0):
+    - TensorFlowLiteC/Metal (= 2.14.0)
+    - TensorFlowLiteSwift/Core (= 2.14.0)
 
 DEPENDENCIES:
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/ios`)
   - Flutter (from `Flutter`)
   - flutter_foreground_task (from `.symlinks/plugins/flutter_foreground_task/ios`)
+  - flutter_pose_detection (from `.symlinks/plugins/flutter_pose_detection/ios`)
   - flutter_screen_recording (from `.symlinks/plugins/flutter_screen_recording/ios`)
   - gal (from `.symlinks/plugins/gal/darwin`)
   - google_mlkit_commons (from `.symlinks/plugins/google_mlkit_commons/ios`)
@@ -107,6 +127,8 @@ SPEC REPOS:
     - MLKitXenoCommon
     - nanopb
     - PromisesObjC
+    - TensorFlowLiteC
+    - TensorFlowLiteSwift
 
 EXTERNAL SOURCES:
   camera_avfoundation:
@@ -115,6 +137,8 @@ EXTERNAL SOURCES:
     :path: Flutter
   flutter_foreground_task:
     :path: ".symlinks/plugins/flutter_foreground_task/ios"
+  flutter_pose_detection:
+    :path: ".symlinks/plugins/flutter_pose_detection/ios"
   flutter_screen_recording:
     :path: ".symlinks/plugins/flutter_screen_recording/ios"
   gal:
@@ -130,6 +154,7 @@ SPEC CHECKSUMS:
   camera_avfoundation: 5675ca25298b6f81fa0a325188e7df62cc217741
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_foreground_task: a159d2c2173b33699ddb3e6c2a067045d7cebb89
+  flutter_pose_detection: 1f78741be33f5af2256eb3f75c2d05dc89579438
   flutter_screen_recording: d27b9073d122b618a07ef0e407470d051b265b26
   gal: baecd024ebfd13c441269ca7404792a7152fde89
   google_mlkit_commons: 92c769cc2e0a2bfdeb3c38091a36e8a9cc8c63d4
@@ -149,6 +174,8 @@ SPEC CHECKSUMS:
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  TensorFlowLiteC: a836de9b6e6018665ccc349538bdd2c3b80dd7a5
+  TensorFlowLiteSwift: f706b143b69d7bf433aba7b08049bdd11c321a10
 
 PODFILE CHECKSUM: 9580a49fa2c095d51100c20f258df867100b916b
 

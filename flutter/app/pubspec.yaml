@@ -36,6 +36,7 @@ dependencies:
   image: ^4.2.0
   gal: ^2.3.2
   flutter_screen_recording: ^2.0.2
+  flutter_pose_detection: ^0.4.1
 
 
   # The following adds the Cupertino Icons font to your application.
