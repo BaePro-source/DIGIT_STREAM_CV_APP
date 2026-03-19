@@ -30,6 +30,12 @@ class _PoseScreenState extends State<PoseScreen> {
   bool _isRecording = false;
   bool _isBusy = false;
   bool _isSwitchingCamera = false;
+  CameraDescription? _frontCamera;
+  CameraDescription? _wideBackCamera;
+  CameraDescription? _ultraWideBackCamera;  
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _currentZoom = 1.0;
 
   Pose? _pose;
   Size? _imageSize;
@@ -42,26 +48,52 @@ class _PoseScreenState extends State<PoseScreen> {
   }
 
   Future<void> _initCamera({
-    CameraLensDirection preferredLens = CameraLensDirection.front,
-  }) async {
-    _cameras = await availableCameras();
+  CameraLensDirection preferredLens = CameraLensDirection.front,
+}) async {
+  _cameras = await availableCameras();
 
-    for (final camera in _cameras) {
-      debugPrint(
-        'camera: ${camera.name}, lensDirection: ${camera.lensDirection}, sensorOrientation: ${camera.sensorOrientation}',
-      );
-    }
-
-    if (_cameras.isEmpty) return;
-
-    final selectedIndex = _cameras.indexWhere(
-      (camera) => camera.lensDirection == preferredLens,
+  for (final camera in _cameras) {
+    debugPrint(
+      'camera: ${camera.name}, lensDirection: ${camera.lensDirection}, sensorOrientation: ${camera.sensorOrientation}',
     );
-
-    _cameraIndex = selectedIndex >= 0 ? selectedIndex : 0;
-
-    await _setupCamera(_cameras[_cameraIndex]);
   }
+
+  if (_cameras.isEmpty) return;
+
+  _frontCamera = _cameras.where(
+    (c) => c.lensDirection == CameraLensDirection.front,
+  ).cast<CameraDescription?>().firstWhere(
+    (c) => c != null,
+    orElse: () => null,
+  );
+
+  final backCameras = _cameras.where(
+    (c) => c.lensDirection == CameraLensDirection.back,
+  ).toList();
+
+  if (backCameras.isNotEmpty) {
+    _wideBackCamera = backCameras.last;
+  }
+
+  if (backCameras.length > 1) {
+    _ultraWideBackCamera = backCameras.first;
+  } else {
+    _ultraWideBackCamera = null;
+  }
+
+  CameraDescription? initialCamera;
+
+  if (preferredLens == CameraLensDirection.front) {
+    initialCamera = _frontCamera ?? _wideBackCamera ?? _cameras.first;
+  } else {
+    initialCamera = _wideBackCamera ?? _frontCamera ?? _cameras.first;
+  }
+
+  if (initialCamera == null) return;
+
+  _cameraIndex = _cameras.indexOf(initialCamera);
+  await _setupCamera(initialCamera);
+}
 
   Future<void> _setupCamera(CameraDescription cameraDescription) async {
     final oldController = _controller;
@@ -89,6 +121,10 @@ class _PoseScreenState extends State<PoseScreen> {
     _initializeControllerFuture = controller.initialize();
 
     await _initializeControllerFuture;
+
+    _minZoom = await controller.getMinZoomLevel();
+    _maxZoom = await controller.getMaxZoomLevel();
+    _currentZoom = 1.0;
 
     _imageSize = Size(
       controller.value.previewSize!.height,
@@ -151,7 +187,7 @@ class _PoseScreenState extends State<PoseScreen> {
 
       if (!mounted) return;
 
-      setState(() {
+      setState(() { 
         _pose = poses.isNotEmpty ? poses.first : null;
       });
     } catch (e) {
@@ -211,6 +247,83 @@ class _PoseScreenState extends State<PoseScreen> {
       }
     }
   }
+
+Future<void> _switchToSpecificCamera(CameraDescription? targetCamera) async {
+  if (targetCamera == null) return;
+  if (_controller == null) return;
+  if (_isSwitchingCamera) return;
+
+  _isSwitchingCamera = true;
+
+  try {
+    _pose = null;
+    _cameraIndex = _cameras.indexOf(targetCamera);
+
+    if (mounted) {
+      setState(() {});
+    }
+
+    await _setupCamera(targetCamera);
+  } catch (e) {
+    debugPrint('Specific camera switch error: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카메라 전환 중 오류가 발생했어요.')),
+      );
+    }
+  } finally {
+    _isSwitchingCamera = false;
+    if (mounted) {
+      setState(() {});
+    }
+  }
+}
+
+Future<void> _handleZoomPreset(double zoom) async {
+  final lensDirection = _controller?.description.lensDirection;
+  if (lensDirection != CameraLensDirection.back) return;
+
+  if (zoom == 0.5) {
+    if (_ultraWideBackCamera != null) {
+      await _switchToSpecificCamera(_ultraWideBackCamera);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이 기기에서는 0.5x 카메라를 찾지 못했어요.')),
+        );
+      }
+    }
+    return;
+  }
+
+  if (zoom == 1.0) {
+    if (_wideBackCamera != null) {
+      await _switchToSpecificCamera(_wideBackCamera);
+    }
+    return;
+  }
+
+  if (zoom == 2.0) {
+    if (_wideBackCamera != null &&
+        _controller?.description != _wideBackCamera) {
+      await _switchToSpecificCamera(_wideBackCamera);
+    }
+    await _setZoom(2.0);
+  }
+}
+
+Future<void> _setZoom(double zoom) async {
+  if (_controller == null) return;
+
+  final clamped = zoom.clamp(_minZoom, _maxZoom).toDouble();
+  await _controller!.setZoomLevel(clamped);
+
+  if (mounted) {
+    setState(() {
+      _currentZoom = clamped;
+    });
+  }
+}
 
 Future<void> _startRecording() async {
   bool started = await FlutterScreenRecording.startRecordScreen("pose_record");
@@ -334,7 +447,22 @@ Future<void> _stopRecording() async {
                   ),
                 ),
               ),
-
+              if (_controller!.description.lensDirection == CameraLensDirection.back)
+                Positioned(
+                  bottom: 120,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildZoomButton('0.5x', 1.0),
+                      const SizedBox(width: 12),
+                      _buildZoomButton('1x', 0.5),
+                      const SizedBox(width: 12),
+                      _buildZoomButton('2x', 2.0),
+                    ],
+                  ),
+                ),
               Positioned(
                 bottom: 40,
                 left: 20,
@@ -362,6 +490,27 @@ Future<void> _stopRecording() async {
     );
   }
 
+  Widget _buildZoomButton(String label, double zoomValue) {
+    final selected = (_currentZoom - zoomValue).abs() < 0.1;
+
+    return GestureDetector(
+      onTap: () => _handleZoomPreset(zoomValue),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.black54,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.black : Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
   Widget _buildCircleButton({
     required IconData icon,
     required VoidCallback onTap,
