@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:gal/gal.dart';
+import 'package:flutter_screen_recording/flutter_screen_recording.dart';
 
 class PoseScreen extends StatefulWidget {
   const PoseScreen({super.key});
@@ -27,8 +27,8 @@ class _PoseScreenState extends State<PoseScreen> {
   List<CameraDescription> _cameras = [];
   int _cameraIndex = 0;
 
-  bool _isBusy = false;
   bool _isRecording = false;
+  bool _isBusy = false;
   bool _isSwitchingCamera = false;
 
   Pose? _pose;
@@ -41,8 +41,17 @@ class _PoseScreenState extends State<PoseScreen> {
     _initCamera();
   }
 
-  Future<void> _initCamera({CameraLensDirection preferredLens = CameraLensDirection.front}) async {
+  Future<void> _initCamera({
+    CameraLensDirection preferredLens = CameraLensDirection.front,
+  }) async {
     _cameras = await availableCameras();
+
+    for (final camera in _cameras) {
+      debugPrint(
+        'camera: ${camera.name}, lensDirection: ${camera.lensDirection}, sensorOrientation: ${camera.sensorOrientation}',
+      );
+    }
+
     if (_cameras.isEmpty) return;
 
     final selectedIndex = _cameras.indexWhere(
@@ -57,10 +66,20 @@ class _PoseScreenState extends State<PoseScreen> {
   Future<void> _setupCamera(CameraDescription cameraDescription) async {
     final oldController = _controller;
 
+    if (oldController != null) {
+      try {
+        if (oldController.value.isStreamingImages) {
+          await oldController.stopImageStream();
+        }
+      } catch (_) {}
+
+      await oldController.dispose();
+    }
+
     final controller = CameraController(
       cameraDescription,
       ResolutionPreset.medium,
-      enableAudio: true,
+      enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
@@ -68,10 +87,6 @@ class _PoseScreenState extends State<PoseScreen> {
 
     _controller = controller;
     _initializeControllerFuture = controller.initialize();
-
-    if (oldController != null) {
-      await oldController.dispose();
-    }
 
     await _initializeControllerFuture;
 
@@ -113,9 +128,11 @@ class _PoseScreenState extends State<PoseScreen> {
 
     try {
       final WriteBuffer allBytes = WriteBuffer();
+
       for (final Plane plane in image.planes) {
         allBytes.putUint8List(plane.bytes);
       }
+
       final bytes = allBytes.done().buffer.asUint8List();
 
       final inputImage = InputImage.fromBytes(
@@ -132,11 +149,11 @@ class _PoseScreenState extends State<PoseScreen> {
 
       final poses = await _poseDetector.processImage(inputImage);
 
-      if (mounted) {
-        setState(() {
-          _pose = poses.isNotEmpty ? poses.first : null;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _pose = poses.isNotEmpty ? poses.first : null;
+      });
     } catch (e) {
       debugPrint('Pose detection error: $e');
     } finally {
@@ -145,18 +162,32 @@ class _PoseScreenState extends State<PoseScreen> {
   }
 
   Future<void> _switchCamera() async {
-    if (_cameras.length < 2) return;
     if (_controller == null) return;
-    if (_isRecording) {
-      _showMessage('녹화 중에는 카메라를 전환할 수 없어요.');
-      return;
-    }
     if (_isSwitchingCamera) return;
 
     _isSwitchingCamera = true;
 
     try {
-      _cameraIndex = (_cameraIndex + 1) % _cameras.length;
+      final currentLens = _controller!.description.lensDirection;
+
+      final targetLens = currentLens == CameraLensDirection.front
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+
+      final targetIndex = _cameras.indexWhere(
+        (camera) => camera.lensDirection == targetLens,
+      );
+
+      if (targetIndex == -1) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('전환할 카메라를 찾지 못했어요.')),
+          );
+        }
+        return;
+      }
+
+      _cameraIndex = targetIndex;
       _pose = null;
 
       if (mounted) {
@@ -166,109 +197,75 @@ class _PoseScreenState extends State<PoseScreen> {
       await _setupCamera(_cameras[_cameraIndex]);
     } catch (e) {
       debugPrint('Camera switch error: $e');
-      _showMessage('카메라 전환 중 오류가 발생했어요.');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카메라 전환 중 오류가 발생했어요.')),
+        );
+      }
     } finally {
       _isSwitchingCamera = false;
+
       if (mounted) {
         setState(() {});
       }
     }
   }
 
-  Future<void> _startRecording() async {
-    final controller = _controller;
-    if (controller == null) return;
-    if (!controller.value.isInitialized) return;
-    if (_isRecording) return;
+Future<void> _startRecording() async {
+  bool started = await FlutterScreenRecording.startRecordScreen("pose_record");
 
-    try {
-      if (controller.value.isStreamingImages) {
-        await controller.stopImageStream();
-      }
-
-      await controller.prepareForVideoRecording();
-
-      await controller.startVideoRecording(
-        onAvailable: (CameraImage image) async {
-          await _processCameraImage(image);
-        },
-      );
-
-      if (mounted) {
-        setState(() {
-          _isRecording = true;
-        });
-      }
-
-      _showMessage('녹화를 시작했어요.');
-    } catch (e) {
-      debugPrint('Start recording error: $e');
-      _showMessage('녹화 시작에 실패했어요.');
-    }
+  if (started) {
+    setState(() {
+      _isRecording = true;
+    });
   }
+}
 
-  Future<void> _stopRecording() async {
-    final controller = _controller;
-    if (controller == null) return;
-    if (!controller.value.isRecordingVideo) return;
+Future<void> _stopRecording() async {
+  String path = await FlutterScreenRecording.stopRecordScreen;
 
-    try {
-      final XFile file = await controller.stopVideoRecording();
+  if (!mounted) return;
 
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        await Gal.requestAccess();
-      }
-
-      await Gal.putVideo(file.path);
-
-      await controller.startImageStream(_processCameraImage);
-
-      if (mounted) {
-        setState(() {
-          _isRecording = false;
-        });
-      }
-
-      _showMessage('영상이 갤러리에 저장되었어요.');
-    } catch (e) {
-      debugPrint('Stop recording error: $e');
-
-      if (mounted) {
-        setState(() {
-          _isRecording = false;
-        });
-      }
-
-      _showMessage('녹화 저장 중 오류가 발생했어요.');
+  try {
+    // 권한 확인
+    bool hasAccess = await Gal.hasAccess();
+    if (!hasAccess) {
+      await Gal.requestAccess();
     }
-  }
 
-  Future<void> _restartImageStreamIfNeeded() async {
-    final controller = _controller;
-    if (controller == null) return;
-    if (!controller.value.isInitialized) return;
-    if (controller.value.isStreamingImages) return;
-    if (controller.value.isRecordingVideo) return;
+    // 🔥 갤러리에 저장
+    await Gal.putVideo(path);
 
-    try {
-      await controller.startImageStream(_processCameraImage);
-    } catch (e) {
-      debugPrint('Restart image stream error: $e');
-    }
-  }
-
-  void _showMessage(String message) {
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      const SnackBar(content: Text('갤러리에 저장 완료')),
     );
+  } catch (e) {
+    debugPrint('갤러리 저장 실패: $e');
   }
+
+  setState(() {
+    _isRecording = false;
+  });
+
+  debugPrint('saved path: $path');
+}
 
   @override
   void dispose() {
-    _controller?.dispose();
-    unawaited(_poseDetector.close());
+    final controller = _controller;
+    _controller = null;
+
+    if (controller != null) {
+      try {
+        if (controller.value.isStreamingImages) {
+          controller.stopImageStream();
+        }
+      } catch (_) {}
+      controller.dispose();
+    }
+
+    _poseDetector.close();
     super.dispose();
   }
 
@@ -286,7 +283,8 @@ class _PoseScreenState extends State<PoseScreen> {
       body: FutureBuilder(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done || _isSwitchingCamera) {
+          if (snapshot.connectionState != ConnectionState.done ||
+              _isSwitchingCamera) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -407,9 +405,9 @@ class PosePainter extends CustomPainter {
       double x = landmark.x * size.width / imageSize.width;
       double y = landmark.y * size.height / imageSize.height;
 
-      /*if (isFrontCamera) {
+     /* if (isFrontCamera) {
         x = size.width - x;
-      }*/
+      } */
 
       return Offset(x, y);
     }
