@@ -78,7 +78,7 @@ class _PoseScreenState extends State<PoseScreen> {
 
     final controller = CameraController(
       cameraDescription,
-      ResolutionPreset.medium,
+      ResolutionPreset.high,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
@@ -291,7 +291,19 @@ Future<void> _stopRecording() async {
           return Stack(
             fit: StackFit.expand,
             children: [
-              CameraPreview(_controller!),
+              ClipRect(
+                child: OverflowBox(
+                  alignment: Alignment.center,
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _controller!.value.previewSize!.height,
+                      height: _controller!.value.previewSize!.width,
+                      child: CameraPreview(_controller!),
+                    ),
+                  ),
+                ),
+              ),
 
               if (_pose != null && _imageSize != null)
                 CustomPaint(
