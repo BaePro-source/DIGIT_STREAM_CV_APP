@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:gal/gal.dart';
 
 class PoseScreen extends StatefulWidget {
   const PoseScreen({super.key});
@@ -22,7 +24,13 @@ class _PoseScreenState extends State<PoseScreen> {
     ),
   );
 
+  List<CameraDescription> _cameras = [];
+  int _cameraIndex = 0;
+
   bool _isBusy = false;
+  bool _isRecording = false;
+  bool _isSwitchingCamera = false;
+
   Pose? _pose;
   Size? _imageSize;
   InputImageRotation? _rotation;
@@ -33,35 +41,50 @@ class _PoseScreenState extends State<PoseScreen> {
     _initCamera();
   }
 
-  Future<void> _initCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
+  Future<void> _initCamera({CameraLensDirection preferredLens = CameraLensDirection.front}) async {
+    _cameras = await availableCameras();
+    if (_cameras.isEmpty) return;
 
-    final selectedCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () => cameras.first,
+    final selectedIndex = _cameras.indexWhere(
+      (camera) => camera.lensDirection == preferredLens,
     );
 
-    _controller = CameraController(
-      selectedCamera,
+    _cameraIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+    await _setupCamera(_cameras[_cameraIndex]);
+  }
+
+  Future<void> _setupCamera(CameraDescription cameraDescription) async {
+    final oldController = _controller;
+
+    final controller = CameraController(
+      cameraDescription,
       ResolutionPreset.medium,
-      enableAudio: false,
+      enableAudio: true,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
 
-    _initializeControllerFuture = _controller!.initialize();
+    _controller = controller;
+    _initializeControllerFuture = controller.initialize();
+
+    if (oldController != null) {
+      await oldController.dispose();
+    }
+
     await _initializeControllerFuture;
 
     _imageSize = Size(
-      _controller!.value.previewSize!.height,
-      _controller!.value.previewSize!.width,
+      controller.value.previewSize!.height,
+      controller.value.previewSize!.width,
     );
 
-    _rotation = _inputImageRotationFromCamera(selectedCamera.sensorOrientation);
+    _rotation = _inputImageRotationFromCamera(
+      cameraDescription.sensorOrientation,
+    );
 
-    await _controller!.startImageStream(_processCameraImage);
+    await controller.startImageStream(_processCameraImage);
 
     if (mounted) {
       setState(() {});
@@ -121,11 +144,131 @@ class _PoseScreenState extends State<PoseScreen> {
     }
   }
 
+  Future<void> _switchCamera() async {
+    if (_cameras.length < 2) return;
+    if (_controller == null) return;
+    if (_isRecording) {
+      _showMessage('녹화 중에는 카메라를 전환할 수 없어요.');
+      return;
+    }
+    if (_isSwitchingCamera) return;
+
+    _isSwitchingCamera = true;
+
+    try {
+      _cameraIndex = (_cameraIndex + 1) % _cameras.length;
+      _pose = null;
+
+      if (mounted) {
+        setState(() {});
+      }
+
+      await _setupCamera(_cameras[_cameraIndex]);
+    } catch (e) {
+      debugPrint('Camera switch error: $e');
+      _showMessage('카메라 전환 중 오류가 발생했어요.');
+    } finally {
+      _isSwitchingCamera = false;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> _startRecording() async {
+    final controller = _controller;
+    if (controller == null) return;
+    if (!controller.value.isInitialized) return;
+    if (_isRecording) return;
+
+    try {
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+
+      await controller.prepareForVideoRecording();
+
+      await controller.startVideoRecording(
+        onAvailable: (CameraImage image) async {
+          await _processCameraImage(image);
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isRecording = true;
+        });
+      }
+
+      _showMessage('녹화를 시작했어요.');
+    } catch (e) {
+      debugPrint('Start recording error: $e');
+      _showMessage('녹화 시작에 실패했어요.');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    final controller = _controller;
+    if (controller == null) return;
+    if (!controller.value.isRecordingVideo) return;
+
+    try {
+      final XFile file = await controller.stopVideoRecording();
+
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        await Gal.requestAccess();
+      }
+
+      await Gal.putVideo(file.path);
+
+      await controller.startImageStream(_processCameraImage);
+
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+        });
+      }
+
+      _showMessage('영상이 갤러리에 저장되었어요.');
+    } catch (e) {
+      debugPrint('Stop recording error: $e');
+
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+        });
+      }
+
+      _showMessage('녹화 저장 중 오류가 발생했어요.');
+    }
+  }
+
+  Future<void> _restartImageStreamIfNeeded() async {
+    final controller = _controller;
+    if (controller == null) return;
+    if (!controller.value.isInitialized) return;
+    if (controller.value.isStreamingImages) return;
+    if (controller.value.isRecordingVideo) return;
+
+    try {
+      await controller.startImageStream(_processCameraImage);
+    } catch (e) {
+      debugPrint('Restart image stream error: $e');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
-  void dispose() async {
-    await _controller?.stopImageStream();
-    await _controller?.dispose();
-    await _poseDetector.close();
+  void dispose() {
+    _controller?.dispose();
+    unawaited(_poseDetector.close());
     super.dispose();
   }
 
@@ -143,7 +286,7 @@ class _PoseScreenState extends State<PoseScreen> {
       body: FutureBuilder(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+          if (snapshot.connectionState != ConnectionState.done || _isSwitchingCamera) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -181,9 +324,57 @@ class _PoseScreenState extends State<PoseScreen> {
                   ),
                 ),
               ),
+
+              Positioned(
+                bottom: 40,
+                left: 20,
+                right: 20,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildCircleButton(
+                      icon: Icons.cameraswitch,
+                      onTap: _switchCamera,
+                    ),
+                    _buildCircleButton(
+                      icon: _isRecording ? Icons.stop : Icons.fiber_manual_record,
+                      backgroundColor: _isRecording ? Colors.red : Colors.white,
+                      iconColor: _isRecording ? Colors.white : Colors.red,
+                      onTap: _isRecording ? _stopRecording : _startRecording,
+                    ),
+                  ],
+                ),
+              ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildCircleButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    Color backgroundColor = Colors.white,
+    Color iconColor = Colors.black,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 68,
+        height: 68,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black38,
+              blurRadius: 8,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Icon(icon, color: iconColor, size: 30),
       ),
     );
   }
@@ -264,6 +455,8 @@ class PosePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant PosePainter oldDelegate) {
-    return oldDelegate.pose != pose || oldDelegate.imageSize != imageSize;
+    return oldDelegate.pose != pose ||
+        oldDelegate.imageSize != imageSize ||
+        oldDelegate.isFrontCamera != isFrontCamera;
   }
 }
